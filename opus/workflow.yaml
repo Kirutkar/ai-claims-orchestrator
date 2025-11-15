@@ -1,0 +1,218 @@
+# Opus Workflow Configuration for AI Claims Processing
+# This workflow orchestrates the multi-agent claim processing pipeline
+
+name: insurance_claims_processing
+version: 1.0.0
+description: Orchestrates AI-powered insurance claims analysis and decision-making
+
+# Workflow configuration
+workflow:
+  # Entry point
+  trigger:
+    type: api_call
+    endpoint: /api/claims/{claim_id}/analyze
+  
+  # Sequential processing stages
+  stages:
+    - name: claim_validation
+      agent: ClaimValidatorAgent
+      description: Validate claim completeness and data integrity
+      inputs:
+        - claim_data
+      outputs:
+        - validation_result
+      timeout: 30s
+      retry_policy:
+        max_attempts: 3
+        backoff: exponential
+      on_failure: abort_workflow
+    
+    - name: fraud_detection
+      agent: FraudDetectorAgent
+      description: Analyze claim for fraud indicators and suspicious patterns
+      inputs:
+        - claim_data
+        - historical_claims
+      outputs:
+        - fraud_result
+      timeout: 45s
+      retry_policy:
+        max_attempts: 3
+        backoff: exponential
+      on_failure: continue_with_warning
+      
+    - name: policy_verification
+      agent: PolicyCheckerAgent
+      description: Verify policy coverage and claim eligibility
+      inputs:
+        - claim_data
+        - policy_data
+      outputs:
+        - policy_result
+      timeout: 30s
+      retry_policy:
+        max_attempts: 3
+        backoff: exponential
+      on_failure: abort_workflow
+    
+    - name: document_analysis
+      agent: DocumentAnalyzerAgent
+      description: Analyze and validate supporting documents
+      inputs:
+        - claim_data
+        - document_list
+      outputs:
+        - document_result
+      timeout: 60s
+      retry_policy:
+        max_attempts: 2
+        backoff: linear
+      on_failure: continue_with_warning
+    
+    - name: final_decision
+      agent: DecisionMakerAgent
+      description: Make final claim decision based on all analyses
+      inputs:
+        - claim_data
+        - validation_result
+        - fraud_result
+        - policy_result
+        - document_result
+      outputs:
+        - final_decision
+        - claim_status
+      timeout: 30s
+      retry_policy:
+        max_attempts: 3
+        backoff: exponential
+      on_failure: manual_review
+  
+  # Parallel processing options (for future optimization)
+  parallel_stages:
+    enabled: false
+    groups:
+      - name: concurrent_checks
+        stages:
+          - fraud_detection
+          - document_analysis
+        wait_for_all: true
+
+# Agent configurations
+agents:
+  ClaimValidatorAgent:
+    type: langchain_agent
+    llm: gemini-pro
+    temperature: 0.3
+    max_tokens: 1024
+    system_prompt: "You are a claims validation expert..."
+  
+  FraudDetectorAgent:
+    type: langchain_agent
+    llm: gemini-pro
+    temperature: 0.2
+    max_tokens: 1024
+    system_prompt: "You are a fraud detection specialist..."
+    tools:
+      - vector_search
+      - similarity_analysis
+  
+  PolicyCheckerAgent:
+    type: langchain_agent
+    llm: gemini-pro
+    temperature: 0.3
+    max_tokens: 1024
+    system_prompt: "You are a policy verification expert..."
+  
+  DocumentAnalyzerAgent:
+    type: langchain_agent
+    llm: gemini-pro
+    temperature: 0.3
+    max_tokens: 1024
+    system_prompt: "You are a document analysis expert..."
+    tools:
+      - ocr_extraction
+      - document_verification
+  
+  DecisionMakerAgent:
+    type: langchain_agent
+    llm: gemini-pro
+    temperature: 0.1
+    max_tokens: 2048
+    system_prompt: "You are the final decision maker..."
+
+# Data flow configuration
+data_flow:
+  storage:
+    type: qdrant
+    collection: insurance_claims
+    embedding_size: 768
+  
+  caching:
+    enabled: true
+    ttl: 3600  # 1 hour
+  
+  logging:
+    level: INFO
+    output: stdout
+    format: json
+
+# Error handling and monitoring
+error_handling:
+  on_stage_failure:
+    - log_error
+    - notify_admin
+    - return_error_response
+  
+  on_timeout:
+    - cancel_stage
+    - log_timeout
+    - return_timeout_response
+
+monitoring:
+  metrics:
+    - processing_time
+    - success_rate
+    - agent_confidence_scores
+    - fraud_detection_rate
+  
+  alerts:
+    high_fraud_rate:
+      threshold: 0.7
+      action: notify_supervisor
+    
+    low_success_rate:
+      threshold: 0.5
+      action: investigate_issues
+
+# Business rules
+business_rules:
+  auto_approve:
+    conditions:
+      - validation_confidence > 0.8
+      - fraud_risk < 0.2
+      - policy_compliance == true
+      - document_quality > 0.7
+    max_amount: 5000
+  
+  auto_reject:
+    conditions:
+      - fraud_risk > 0.7
+      - policy_compliance == false
+  
+  manual_review:
+    conditions:
+      - fraud_risk between 0.4 and 0.7
+      - claim_amount > 10000
+      - document_quality < 0.5
+
+# Performance optimization
+optimization:
+  concurrent_requests: 10
+  queue_size: 100
+  worker_threads: 4
+  
+  rate_limiting:
+    enabled: true
+    requests_per_minute: 60
+  
+  caching_strategy: aggressive
