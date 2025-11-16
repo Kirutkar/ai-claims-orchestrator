@@ -1,0 +1,4 @@
+google-generativeai
+qdrant-client
+python-dotenv
+numpy
