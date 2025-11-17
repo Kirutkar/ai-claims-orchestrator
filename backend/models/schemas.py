@@ -11,9 +11,11 @@ class ClaimStatus(str, Enum):
     POLICY_CHECK = "policy_check"
     DOCUMENT_ANALYSIS = "document_analysis"
     DECISION_PENDING = "decision_pending"
+    REVIEW_REQUIRED = "review_required"
     APPROVED = "approved"
     REJECTED = "rejected"
     NEEDS_INFO = "needs_info"
+    ESCALATED = "escalated"
 
 
 class ClaimType(str, Enum):
@@ -115,3 +117,58 @@ class GuidedChatResponse(BaseModel):
     ready_to_submit: bool = Field(default=False, description="Whether claim is ready to submit")
     conversation_id: Optional[str] = Field(None, description="Conversation ID")
     timestamp: str = Field(..., description="Response timestamp")
+
+
+# Review-related schemas
+class ReviewAction(str, Enum):
+    APPROVE = "approve"
+    MODIFY = "modify"
+    ESCALATE = "escalate"
+    REQUEST_INFO = "request_info"
+
+
+class ReviewDecisionRequest(BaseModel):
+    action: ReviewAction = Field(..., description="Review action to take")
+    modified_payout: Optional[float] = Field(None, description="Modified payout amount (if action=modify)")
+    reason: str = Field(..., description="Reason for the decision")
+    escalation_reason: Optional[str] = Field(None, description="Escalation reason (if action=escalate)")
+    requested_documents: Optional[List[str]] = Field(default=[], description="Requested document types (if action=request_info)")
+    analyst_id: Optional[str] = Field(None, description="Analyst ID performing the review")
+
+
+class ReviewDecisionResponse(BaseModel):
+    claim_id: str
+    status: ClaimStatus
+    message: str
+    next_stage: str
+    audit_log_id: str
+    updated_at: datetime
+
+
+class ReviewQueueItem(BaseModel):
+    claim_id: str
+    priority: str
+    requires_review_reason: str
+    ai_confidence: Optional[float] = None
+    risk_score: Optional[float] = None
+    claim_type: str
+    claim_amount: float
+    created_at: datetime
+    updated_at: datetime
+
+
+class ReviewQueueResponse(BaseModel):
+    claims: List[ReviewQueueItem]
+    total: int
+
+
+class ReviewDetailResponse(BaseModel):
+    claim_id: str
+    claim_summary: Dict[str, Any]
+    ai_recommendation: Dict[str, Any]
+    similar_claims: List[Dict[str, Any]]
+    flags: List[Dict[str, Any]]
+    extracted_facts: Dict[str, Any]
+    requires_review: bool
+    review_reason: Optional[str] = None
+    analysis: Optional[ClaimAnalysis] = None

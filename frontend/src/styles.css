@@ -225,6 +225,24 @@ body {
   color: #92400e;
 }
 
+.status-review_required {
+  background-color: #fef3c7;
+  color: #92400e;
+}
+
+.status-escalated {
+  background-color: #fee2e2;
+  color: #991b1b;
+}
+
+.priority-high {
+  border-left-color: #ef4444 !important;
+}
+
+.priority-standard {
+  border-left-color: #f59e0b !important;
+}
+
 .progress-bar {
   width: 100%;
   height: 8px;

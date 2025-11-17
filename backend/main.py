@@ -10,7 +10,10 @@ from models.schemas import (
     ClaimSubmission, ClaimResponse, ClaimStatusResponse,
     Claim, ClaimStatus, AnalysisTriggerResponse,
     ChatMessage, ChatResponse,
-    GuidedChatMessage, GuidedChatResponse
+    GuidedChatMessage, GuidedChatResponse,
+    ReviewDecisionRequest, ReviewDecisionResponse,
+    ReviewQueueResponse, ReviewQueueItem, ReviewDetailResponse,
+    ReviewAction
 )
 from orchestrator import ClaimsOrchestrator
 from utils.file_storage import file_storage
@@ -84,6 +87,9 @@ orchestrator = ClaimsOrchestrator()
 
 # In-memory storage for demo (use database in production)
 claims_db: Dict[str, Claim] = {}
+
+# Audit log storage (in production, use proper database)
+audit_logs: List[Dict] = []
 
 
 @app.get("/")
@@ -262,9 +268,11 @@ async def get_claim_status(claim_id: str):
         ClaimStatus.POLICY_CHECK: 60,
         ClaimStatus.DOCUMENT_ANALYSIS: 80,
         ClaimStatus.DECISION_PENDING: 90,
+        ClaimStatus.REVIEW_REQUIRED: 95,
         ClaimStatus.APPROVED: 100,
         ClaimStatus.REJECTED: 100,
-        ClaimStatus.NEEDS_INFO: 50
+        ClaimStatus.NEEDS_INFO: 50,
+        ClaimStatus.ESCALATED: 95
     }
     
     current_step_map = {
@@ -274,9 +282,11 @@ async def get_claim_status(claim_id: str):
         ClaimStatus.POLICY_CHECK: "Verifying policy coverage",
         ClaimStatus.DOCUMENT_ANALYSIS: "Analyzing supporting documents",
         ClaimStatus.DECISION_PENDING: "Making final decision",
+        ClaimStatus.REVIEW_REQUIRED: "Awaiting analyst review",
         ClaimStatus.APPROVED: "Claim approved",
         ClaimStatus.REJECTED: "Claim rejected",
-        ClaimStatus.NEEDS_INFO: "Additional information required"
+        ClaimStatus.NEEDS_INFO: "Additional information required",
+        ClaimStatus.ESCALATED: "Escalated to senior adjuster"
     }
     
     return ClaimStatusResponse(
@@ -350,14 +360,54 @@ async def analyze_claim(claim_id: str):
             status_update_callback=update_claim_status
         )
         
-        # Update claim with analysis results and final status
+        # Update claim with analysis results
         claim.analysis = analysis
-        claim.status = analysis.overall_status
+        
+        # Auto-escalation logic: Check if review is required
+        requires_review = False
+        review_reason = None
+        
+        # Check confidence threshold (< 70%)
+        if analysis.final_decision and analysis.final_decision.confidence < 0.7:
+            requires_review = True
+            review_reason = f"Low AI confidence ({analysis.final_decision.confidence:.2f} < 0.70)"
+        
+        # Check risk score (HIGH risk requires review)
+        if analysis.fraud_result and analysis.fraud_result.status == "warning":
+            fraud_risk = analysis.fraud_result.metadata.get("fraud_risk", 0)
+            if fraud_risk >= 0.8:
+                requires_review = True
+                review_reason = f"High fraud risk detected ({fraud_risk:.2f})"
+        
+        # Check for anomalies in validation
+        if analysis.validation_result and analysis.validation_result.status == "failed":
+            requires_review = True
+            review_reason = "Validation failed - requires manual review"
+        
+        # Set final status based on review requirement
+        if requires_review:
+            claim.status = ClaimStatus.REVIEW_REQUIRED
+        else:
+            # Auto-approve only if low risk and high confidence
+            claim.status = analysis.overall_status
+        
         claim.updated_at = datetime.now()
+        
+        # Log audit entry
+        audit_logs.append({
+            "claim_id": claim_id,
+            "timestamp": datetime.now().isoformat(),
+            "action": "analysis_completed",
+            "status": claim.status.value,
+            "requires_review": requires_review,
+            "review_reason": review_reason,
+            "ai_confidence": analysis.final_decision.confidence if analysis.final_decision else None
+        })
         
         return AnalysisTriggerResponse(
             claim_id=claim_id,
-            message=f"Claim analysis completed. Status: {analysis.overall_status}",
+            message=f"Claim analysis completed. Status: {claim.status.value}" + 
+                   (f" - Review required: {review_reason}" if requires_review else ""),
             status="completed"
         )
     except Exception as e:
@@ -515,6 +565,55 @@ async def guided_submission_chat(chat_request: GuidedChatMessage):
             status_code=500,
             detail=f"Guided chat error: {str(e)}"
         )
+
+
+# Review endpoints for human-in-the-loop
+@app.get("/api/review/queue", response_model=ReviewQueueResponse)
+async def get_review_queue(status: str = "pending", priority: str = None):
+    """
+    Get queue of claims awaiting review
+    
+    Returns claims that require human analyst review
+    """
+    from review_endpoints import get_review_queue_endpoint
+    return get_review_queue_endpoint(claims_db, status, priority)
+
+
+@app.get("/api/claims/{claim_id}/review", response_model=ReviewDetailResponse)
+async def get_review_details(claim_id: str):
+    """
+    Get detailed information for a claim ready for review
+    
+    Returns all information an analyst needs to make a decision
+    """
+    from review_endpoints import get_review_details_endpoint
+    return get_review_details_endpoint(claim_id, claims_db)
+
+
+@app.post("/api/claims/{claim_id}/review/decision", response_model=ReviewDecisionResponse)
+async def submit_review_decision(claim_id: str, decision: ReviewDecisionRequest):
+    """
+    Submit analyst decision for a claim under review
+    
+    Actions: approve, modify, escalate, request_info
+    """
+    from review_endpoints import submit_review_decision_endpoint
+    return submit_review_decision_endpoint(claim_id, decision, claims_db, audit_logs)
+
+
+@app.get("/api/claims/{claim_id}/audit")
+async def get_audit_log(claim_id: str):
+    """
+    Get audit log for a claim
+    
+    Returns all audit entries for traceability
+    """
+    claim_logs = [log for log in audit_logs if log.get("claim_id") == claim_id]
+    return {
+        "claim_id": claim_id,
+        "logs": claim_logs,
+        "total": len(claim_logs)
+    }
 
 
 if __name__ == "__main__":

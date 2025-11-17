@@ -95,6 +95,29 @@ export const claimsAPI = {
     const response = await api.get(`/api/claims/${claimId}/documents`);
     return response.data;
   },
+
+  // Review endpoints
+  getReviewQueue: async (status = 'pending', priority = null) => {
+    const params = { status };
+    if (priority) params.priority = priority;
+    const response = await api.get('/api/review/queue', { params });
+    return response.data;
+  },
+
+  getReviewDetails: async (claimId) => {
+    const response = await api.get(`/api/claims/${claimId}/review`);
+    return response.data;
+  },
+
+  submitReviewDecision: async (claimId, decision) => {
+    const response = await api.post(`/api/claims/${claimId}/review/decision`, decision);
+    return response.data;
+  },
+
+  getAuditLog: async (claimId) => {
+    const response = await api.get(`/api/claims/${claimId}/audit`);
+    return response.data;
+  },
 };
 
 export default api;
