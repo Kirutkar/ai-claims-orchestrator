@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
-import { RefreshCw, FolderOpen } from 'lucide-react';
-import { claimsAPI } from '../services/api';
-import ClaimStatus from './ClaimStatus';
+import React, { useState, useEffect } from "react";
+import { RefreshCw, FolderOpen } from "lucide-react";
+import { claimsAPI } from "../services/api";
+import ClaimStatus from "./ClaimStatus";
 
 const Dashboard = () => {
   const [claims, setClaims] = useState([]);
@@ -16,7 +16,7 @@ const Dashboard = () => {
       const data = await claimsAPI.listClaims();
       setClaims(data);
     } catch (err) {
-      setError('Failed to load claims');
+      setError("Failed to load claims");
     } finally {
       setLoading(false);
     }
@@ -28,26 +28,27 @@ const Dashboard = () => {
 
   const getStatusClass = (status) => {
     const statusMap = {
-      submitted: 'status-submitted',
-      approved: 'status-approved',
-      rejected: 'status-rejected',
-      needs_info: 'status-needs_info',
-      review_required: 'status-needs_info',
-      escalated: 'status-rejected',
+      submitted: "status-submitted",
+      approved: "status-approved",
+      rejected: "status-rejected",
+      needs_info: "status-needs_info",
+      review_required: "status-needs_info",
+      escalated: "status-rejected",
     };
-    return statusMap[status] || 'status-submitted';
+    return statusMap[status] || "status-submitted";
   };
 
   const formatStatus = (status) => {
-    return status.split('_').map(word => 
-      word.charAt(0).toUpperCase() + word.slice(1)
-    ).join(' ');
+    return status
+      .split("_")
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(" ");
   };
 
   if (selectedClaim) {
     return (
-      <ClaimStatus 
-        claimId={selectedClaim} 
+      <ClaimStatus
+        claimId={selectedClaim}
         onBack={() => setSelectedClaim(null)}
       />
     );
@@ -55,22 +56,29 @@ const Dashboard = () => {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: "2rem",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
           <FolderOpen size={24} color="#3b82f6" />
-          <h2 style={{ fontSize: '1.5rem', fontWeight: '700' }}>All Claims</h2>
+          <h2 style={{ fontSize: "1.5rem", fontWeight: "700" }}>All Claims</h2>
         </div>
-        <button onClick={fetchClaims} className="btn btn-secondary" disabled={loading}>
+        <button
+          onClick={fetchClaims}
+          className="btn btn-secondary"
+          disabled={loading}
+        >
           <RefreshCw size={20} />
           Refresh
         </button>
       </div>
 
-      {error && (
-        <div className="alert alert-error">
-          {error}
-        </div>
-      )}
+      {error && <div className="alert alert-error">{error}</div>}
 
       {loading ? (
         <div className="loading">
@@ -78,38 +86,52 @@ const Dashboard = () => {
           <p>Loading claims...</p>
         </div>
       ) : claims.length === 0 ? (
-        <div className="card" style={{ textAlign: 'center', padding: '3rem' }}>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '1.1rem' }}>
+        <div className="card" style={{ textAlign: "center", padding: "3rem" }}>
+          <p style={{ color: "var(--text-secondary)", fontSize: "1.1rem" }}>
             No claims found. Submit your first claim to get started!
           </p>
         </div>
       ) : (
         <div className="claims-grid">
           {claims.map((claim) => (
-            <div 
-              key={claim.claim_id} 
+            <div
+              key={claim.claim_id}
               className="claim-card"
               onClick={() => setSelectedClaim(claim.claim_id)}
             >
               <div className="claim-header">
                 <span className="claim-id">{claim.claim_id}</span>
-                <span className={`status-badge ${getStatusClass(claim.status)}`}>
+                <span
+                  className={`status-badge ${getStatusClass(claim.status)}`}
+                >
                   {formatStatus(claim.status)}
                 </span>
               </div>
-              
+
               <div className="progress-bar">
-                <div 
-                  className="progress-fill" 
+                <div
+                  className="progress-fill"
                   style={{ width: `${claim.progress_percentage}%` }}
                 ></div>
               </div>
-              
-              <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginTop: '0.5rem' }}>
+
+              <p
+                style={{
+                  fontSize: "0.875rem",
+                  color: "var(--text-secondary)",
+                  marginTop: "0.5rem",
+                }}
+              >
                 {claim.current_step}
               </p>
-              
-              <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.5rem' }}>
+
+              <p
+                style={{
+                  fontSize: "0.75rem",
+                  color: "var(--text-secondary)",
+                  marginTop: "0.5rem",
+                }}
+              >
                 Updated: {new Date(claim.updated_at).toLocaleString()}
               </p>
             </div>
