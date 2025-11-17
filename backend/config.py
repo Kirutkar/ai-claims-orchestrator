@@ -10,9 +10,10 @@ class Settings(BaseSettings):
     gemini_embedding_model: str = "models/embedding-001"
     
     # Qdrant Configuration - Docker-aware
-    qdrant_host: str = os.getenv("QDRANT_URL")
+    # Supports both QDRANT_URL (cloud) and QDRANT_HOST (local)
+    qdrant_host: str = os.getenv("QDRANT_HOST", os.getenv("QDRANT_URL", "localhost"))
     qdrant_api_key: str = os.getenv("QDRANT_API_KEY", "")
-    qdrant_port: int = 6333
+    qdrant_port: int = int(os.getenv("QDRANT_PORT", "6333"))
     qdrant_collection: str = os.getenv("QDRANT_COLLECTION", "insurance_claims")
     embedding_dimension: int = 768
 
@@ -31,6 +32,7 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         case_sensitive = False
+        extra = "ignore"  # Ignore extra fields in .env file
 
 
 @lru_cache()

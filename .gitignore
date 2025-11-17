@@ -49,7 +49,7 @@ __pycache__/
 venv/
 .env
 .DS_Store
-
+*venv*
 
 ########################################
 # GLOBAL NODE (DO NOT PUSH BIG FOLDERS)
