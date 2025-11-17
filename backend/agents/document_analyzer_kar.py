@@ -1,7 +1,7 @@
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import ChatPromptTemplate
 from typing import Dict, Any, List
-from backend.models.schemas import AgentResult
+from models.schemas import AgentResult
 
 from dotenv import load_dotenv
 load_dotenv()

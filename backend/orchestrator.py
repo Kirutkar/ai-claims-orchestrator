@@ -12,7 +12,7 @@ from models.schemas import ClaimSubmission, ClaimAnalysis, AgentResult, ClaimSta
 from agents.validator import ClaimValidatorAgent
 from agents.fraud_detector import FraudDetectorAgent
 from agents.policy_checker import PolicyCheckerAgent
-from backend.agents.document_analyzer import DocumentAnalyzerAgent
+from agents.document_analyzer import DocumentAnalyzerAgent
 from agents.decision_maker import DecisionMakerAgent
 from agents.chat_agent import ChatAgent
 from agents.guided_chat_agent import GuidedChatAgent

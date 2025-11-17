@@ -23,7 +23,7 @@ class DocumentAnalyzerAgent:
         # Initialize Gemini Vision for OCR
         if gemini_api_key:
             genai.configure(api_key=gemini_api_key)
-            self.vision_model = genai.GenerativeModel('gemini-pro-vision')
+            self.vision_model = genai.GenerativeModel('gemini-2.5-flash')
         else:
             self.vision_model = None
     
