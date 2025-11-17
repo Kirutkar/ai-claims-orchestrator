@@ -333,14 +333,24 @@ async def analyze_claim(claim_id: str):
         )
     
     try:
+        # Define status update callback to update claim status in real-time
+        def update_claim_status(new_status: ClaimStatus):
+            claim.status = new_status
+            claim.updated_at = datetime.now()
+            print(f"[{claim_id}] Status updated to: {new_status}")
+        
         # Update status to validating
         claim.status = ClaimStatus.VALIDATING
         claim.updated_at = datetime.now()
         
-        # Run the orchestrator asynchronously
-        analysis = await orchestrator.process_claim(claim.submission, claim_id)
+        # Run the orchestrator asynchronously with status update callback
+        analysis = await orchestrator.process_claim(
+            claim.submission, 
+            claim_id,
+            status_update_callback=update_claim_status
+        )
         
-        # Update claim with analysis results
+        # Update claim with analysis results and final status
         claim.analysis = analysis
         claim.status = analysis.overall_status
         claim.updated_at = datetime.now()

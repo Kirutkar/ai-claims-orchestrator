@@ -9,6 +9,7 @@ import uuid
 
 from config import get_settings
 from models.schemas import ClaimSubmission, ClaimAnalysis, AgentResult, ClaimStatus
+from datetime import datetime
 from agents.validator import ClaimValidatorAgent
 from agents.fraud_detector import FraudDetectorAgent
 from agents.policy_checker import PolicyCheckerAgent
@@ -39,7 +40,7 @@ class ClaimsOrchestrator:
             google_api_key=self.settings.gemini_api_key
         )
         
-        # Initialize Qdrant client - Docker-aware
+        # Initialize Qdrant client - Docker-aware (supports both local and cloud)
         try:
             self.qdrant_client = QdrantClient(
                 # host=self.settings.qdrant_host,
@@ -88,7 +89,7 @@ class ClaimsOrchestrator:
         except Exception as e:
             print(f"Qdrant collection initialization: {e}")
     
-    async def process_claim(self, claim_submission: ClaimSubmission, claim_id: str) -> ClaimAnalysis:
+    async def process_claim(self, claim_submission: ClaimSubmission, claim_id: str, status_update_callback=None) -> ClaimAnalysis:
         """
         Orchestrate the complete claims processing workflow
         
@@ -98,6 +99,11 @@ class ClaimsOrchestrator:
         3. Verify policy coverage
         4. Analyze supporting documents
         5. Make final decision
+        
+        Args:
+            claim_submission: The claim submission data
+            claim_id: Unique claim identifier
+            status_update_callback: Optional callback function(status: ClaimStatus) to update claim status in real-time
         """
         start_time = time.time()
         
@@ -105,23 +111,33 @@ class ClaimsOrchestrator:
         
         # Step 1: Validate Claim
         print(f"[{claim_id}] Step 1: Validating claim...")
+        if status_update_callback:
+            status_update_callback(ClaimStatus.VALIDATING)
         validation_result = await self.validator.validate(claim_data)
         
         # Step 2: Fraud Detection
         print(f"[{claim_id}] Step 2: Checking for fraud indicators...")
+        if status_update_callback:
+            status_update_callback(ClaimStatus.FRAUD_CHECK)
         similar_claims = await self._find_similar_claims(claim_data)
         fraud_result = await self.fraud_detector.analyze(claim_data, similar_claims)
         
         # Step 3: Policy Verification
         print(f"[{claim_id}] Step 3: Verifying policy coverage...")
+        if status_update_callback:
+            status_update_callback(ClaimStatus.POLICY_CHECK)
         policy_result = await self.policy_checker.verify(claim_data)
         
         # Step 4: Document Analysis
         print(f"[{claim_id}] Step 4: Analyzing documents...")
+        if status_update_callback:
+            status_update_callback(ClaimStatus.DOCUMENT_ANALYSIS)
         document_result = await self.document_analyzer.analyze(claim_data, claim_id=claim_id)
         
         # Step 5: Final Decision
         print(f"[{claim_id}] Step 5: Making final decision...")
+        if status_update_callback:
+            status_update_callback(ClaimStatus.DECISION_PENDING)
         final_decision, claim_status = await self.decision_maker.decide(
             claim_data,
             validation_result,

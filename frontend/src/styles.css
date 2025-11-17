@@ -324,8 +324,22 @@ body {
 
 .findings {
   color: var(--text-secondary);
-  line-height: 1.6;
-  margin-top: 0.5rem;
+  line-height: 1.7;
+  margin-top: 0.75rem;
+  font-size: 0.95rem;
+}
+
+.findings strong {
+  color: var(--text-color);
+  font-weight: 700;
+}
+
+.findings div {
+  margin-bottom: 0.75rem;
+}
+
+.findings div:last-child {
+  margin-bottom: 0;
 }
 
 @media (max-width: 768px) {
@@ -463,9 +477,24 @@ body {
 
 .message-text {
   font-size: 15px;
-  line-height: 1.5;
-  white-space: pre-wrap;
+  line-height: 1.6;
   word-wrap: break-word;
+}
+
+.message-text strong {
+  font-weight: 700;
+}
+
+.message.user .message-text strong {
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.message-text div {
+  margin-bottom: 0.5rem;
+}
+
+.message-text div:last-child {
+  margin-bottom: 0;
 }
 
 .message-time {

@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { claimsAPI } from "../services/api";
 import { v4 as uuidv4 } from "uuid";
+import { FormattedText } from "../utils/formatText";
 
 function generateUniqueId() {
   const uniquePart = uuidv4().replace(/-/g, "").substring(0, 8).toUpperCase();
@@ -29,6 +30,7 @@ const ChatInterface = () => {
   const [uploadedFiles, setUploadedFiles] = useState([]);
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
+  const chatInputRef = useRef(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -54,6 +56,10 @@ const ChatInterface = () => {
     await new Promise((resolve) => setTimeout(resolve, delay));
     setIsTyping(false);
     addMessage(text, "bot");
+    // Focus input field after bot message is displayed
+    setTimeout(() => {
+      chatInputRef.current?.focus();
+    }, 100);
   };
 
   // New function to get AI response from backend
@@ -81,6 +87,11 @@ const ChatInterface = () => {
         suggestions: response.suggestions,
         intent: response.intent,
       });
+
+      // Focus input field after bot message is displayed
+      setTimeout(() => {
+        chatInputRef.current?.focus();
+      }, 100);
 
       // Update conversation ID if provided
       if (response.conversation_id && !conversationId) {
@@ -123,6 +134,11 @@ const ChatInterface = () => {
         next_field: response.next_field,
         is_complete: response.is_complete,
       });
+
+      // Focus input field after bot message is displayed
+      setTimeout(() => {
+        chatInputRef.current?.focus();
+      }, 100);
 
       // Update conversation ID if provided
       if (response.conversation_id && !conversationId) {
@@ -518,6 +534,11 @@ Type 'submit' to proceed or continue editing.
     addMessage(userInput, "user");
     setInputValue("");
 
+    // Keep focus on input field after submitting
+    setTimeout(() => {
+      chatInputRef.current?.focus();
+    }, 50);
+
     await handleUserInput(userInput);
   };
 
@@ -556,7 +577,9 @@ Type 'submit' to proceed or continue editing.
                 {message.type === "bot" ? "🤖" : "👤"}
               </div>
               <div className="message-bubble">
-                <div className="message-text">{message.text}</div>
+                <div className="message-text">
+                  <FormattedText text={message.text} />
+                </div>
                 <div className="message-time">
                   {message.timestamp.toLocaleTimeString([], {
                     hour: "2-digit",
@@ -659,6 +682,7 @@ Type 'submit' to proceed or continue editing.
 
         <form onSubmit={handleSubmit} className="chat-input-form">
           <input
+            ref={chatInputRef}
             type="text"
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
