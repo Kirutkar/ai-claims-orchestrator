@@ -13,6 +13,7 @@ import { FormattedText, FormattedRecommendations } from "../utils/formatText";
 const ClaimStatus = ({ claimId, onBack }) => {
   const [claim, setClaim] = useState(null);
   const [results, setResults] = useState(null);
+  const [workflowState, setWorkflowState] = useState(null);
   const [loading, setLoading] = useState(true);
   const [analyzing, setAnalyzing] = useState(false);
   const [error, setError] = useState(null);
@@ -26,6 +27,15 @@ const ClaimStatus = ({ claimId, onBack }) => {
       if (data.analysis) {
         const resultsData = await claimsAPI.getAnalysisResults(claimId);
         setResults(resultsData);
+      }
+
+      // Fetch workflow state if available
+      try {
+        const workflowData = await claimsAPI.getWorkflowState(claimId);
+        setWorkflowState(workflowData);
+      } catch (err) {
+        // Workflow state might not exist yet, that's okay
+        setWorkflowState(null);
       }
     } catch (err) {
       setError("Failed to load claim status");
@@ -130,6 +140,98 @@ const ClaimStatus = ({ claimId, onBack }) => {
         <p style={{ color: "var(--text-secondary)", marginBottom: "1.5rem" }}>
           {claim.current_step} - {claim.progress_percentage}% complete
         </p>
+
+        {/* Opus Workflow Stages */}
+        {workflowState && (
+          <div className="card" style={{ marginBottom: "1.5rem", backgroundColor: "var(--bg-color)" }}>
+            <h3 style={{ fontSize: "1.1rem", fontWeight: "700", marginBottom: "1rem" }}>
+              Opus Workflow Stages
+            </h3>
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+              {[
+                { stage: "intake", label: "1. Intake", icon: "📥" },
+                { stage: "understand", label: "2. Understand", icon: "🧠" },
+                { stage: "decide", label: "3. Decide", icon: "⚖️" },
+                { stage: "review", label: "4. Review", icon: "👤" },
+                { stage: "deliver", label: "5. Deliver", icon: "✅" },
+              ].map((stageInfo, idx) => {
+                const stageEvent = workflowState.stage_history.find(
+                  (e) => e.stage === stageInfo.stage
+                );
+                const isCurrent = workflowState.current_stage === stageInfo.stage;
+                const isCompleted = stageEvent && stageEvent.status === "completed";
+                const isPending = !stageEvent || stageEvent.status === "pending";
+                
+                return (
+                  <div
+                    key={stageInfo.stage}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "1rem",
+                      padding: "0.75rem",
+                      borderRadius: "8px",
+                      backgroundColor: isCurrent
+                        ? "var(--primary-color)"
+                        : isCompleted
+                        ? "#d1fae5"
+                        : "transparent",
+                      border: isCurrent
+                        ? "2px solid var(--primary-color)"
+                        : isCompleted
+                        ? "2px solid #10b981"
+                        : "1px solid var(--border-color)",
+                      opacity: isPending ? 0.6 : 1,
+                    }}
+                  >
+                    <span style={{ fontSize: "1.5rem" }}>{stageInfo.icon}</span>
+                    <div style={{ flex: 1 }}>
+                      <div
+                        style={{
+                          fontWeight: isCurrent ? "700" : "600",
+                          color: isCurrent ? "white" : "var(--text-color)",
+                        }}
+                      >
+                        {stageInfo.label}
+                      </div>
+                      {stageEvent && (
+                        <div
+                          style={{
+                            fontSize: "0.875rem",
+                            color: isCurrent ? "rgba(255,255,255,0.9)" : "var(--text-secondary)",
+                            marginTop: "0.25rem",
+                          }}
+                        >
+                          {stageEvent.message}
+                        </div>
+                      )}
+                    </div>
+                    {isCompleted && (
+                      <CheckCircle size={20} color="#10b981" />
+                    )}
+                    {isCurrent && !isCompleted && (
+                      <Clock size={20} color="white" />
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            {workflowState.current_stage && (
+              <div
+                style={{
+                  marginTop: "1rem",
+                  padding: "0.75rem",
+                  backgroundColor: "var(--card-bg)",
+                  borderRadius: "8px",
+                  fontSize: "0.875rem",
+                  color: "var(--text-secondary)",
+                }}
+              >
+                <strong>Current Stage:</strong> {workflowState.current_stage} ({workflowState.stage_status})
+              </div>
+            )}
+          </div>
+        )}
 
         {!claim.analysis && claim.status === "submitted" && (
           <button

@@ -140,7 +140,7 @@ const ReviewDetail = ({ claimId, onBack }) => {
 
   if (!reviewData) return null;
 
-  const { claim_summary, ai_recommendation, flags, extracted_facts, analysis } =
+  const { claim_summary, ai_recommendation, flags, extracted_facts, analysis, similar_claims } =
     reviewData;
 
   return (
@@ -271,6 +271,49 @@ const ReviewDetail = ({ claimId, onBack }) => {
                     recommendations={ai_recommendation.recommendations}
                   />
                 )}
+            </div>
+          </div>
+        )}
+
+        {/* Similar Claims */}
+        {similar_claims && similar_claims.length > 0 && (
+          <div style={{ marginBottom: "2rem" }}>
+            <h3 style={{ fontSize: "1.1rem", fontWeight: "700", marginBottom: "1rem" }}>
+              📑 Similar Historical Claims
+            </h3>
+            <div className="card" style={{ backgroundColor: "var(--bg-color)" }}>
+              <p style={{ color: "var(--text-secondary)", marginBottom: "1rem" }}>
+                Found {similar_claims.length} similar claim{similar_claims.length > 1 ? "s" : ""} from historical data:
+              </p>
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+                {similar_claims.map((sc, idx) => (
+                  <div
+                    key={idx}
+                    style={{
+                      padding: "0.75rem",
+                      backgroundColor: "var(--card-bg)",
+                      borderRadius: "8px",
+                      border: "1px solid var(--border-color)",
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.5rem" }}>
+                      <strong>{sc.claim_id || `Claim #${idx + 1}`}</strong>
+                      {sc.similarity_score && (
+                        <span style={{ color: "var(--text-secondary)", fontSize: "0.875rem" }}>
+                          {(sc.similarity_score * 100).toFixed(0)}% similar
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ fontSize: "0.875rem", color: "var(--text-secondary)" }}>
+                      <div><strong>Amount:</strong> ${sc.amount?.toLocaleString() || "N/A"}</div>
+                      <div><strong>Status:</strong> {sc.status?.toUpperCase() || "N/A"}</div>
+                      {sc.description && (
+                        <div style={{ marginTop: "0.5rem" }}>{sc.description}</div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         )}

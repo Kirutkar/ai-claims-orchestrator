@@ -172,3 +172,23 @@ class ReviewDetailResponse(BaseModel):
     requires_review: bool
     review_reason: Optional[str] = None
     analysis: Optional[ClaimAnalysis] = None
+
+
+# Workflow-related schemas
+class WorkflowStageInfo(BaseModel):
+    stage: str
+    status: str
+    message: str
+    timestamp: str
+    data: Optional[Dict[str, Any]] = None
+
+
+class WorkflowStateResponse(BaseModel):
+    claim_id: str
+    current_stage: str
+    stage_status: str
+    stage_history: List[WorkflowStageInfo]
+    workflow_data: Dict[str, Any]
+    errors: List[Dict[str, Any]]
+    start_time: str
+    last_updated: str

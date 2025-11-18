@@ -2,7 +2,7 @@
 Review endpoints for human-in-the-loop functionality
 """
 from fastapi import HTTPException
-from typing import Dict, List
+from typing import Dict, List, Optional
 import uuid
 from datetime import datetime
 
@@ -11,6 +11,7 @@ from models.schemas import (
     ReviewQueueResponse, ReviewQueueItem, ReviewDetailResponse,
     ReviewAction, Claim
 )
+from workflow.opus_executor import WorkflowStage, StageStatus
 
 
 # Review endpoints for human-in-the-loop
@@ -68,7 +69,7 @@ def get_review_queue_endpoint(claims_db: Dict[str, Claim], status: str = "pendin
     )
 
 
-def get_review_details_endpoint(claim_id: str, claims_db: Dict[str, Claim]):
+async def get_review_details_endpoint(claim_id: str, claims_db: Dict[str, Claim], workflow_executor=None):
     """
     Get detailed information for a claim ready for review
     
@@ -112,12 +113,36 @@ def get_review_details_endpoint(claim_id: str, claims_db: Dict[str, Claim]):
             "recommendations": claim.analysis.final_decision.recommendations
         }
     
-    # Get similar claims (if available from orchestrator)
+    # Get similar claims from workflow state if available
     similar_claims = []
     if claim.analysis:
-        # Similar claims would be retrieved from Qdrant during analysis
-        # For now, return empty list - can be enhanced
-        similar_claims = []
+        # First try to get from workflow state
+        if workflow_executor:
+            workflow_state = workflow_executor.get_workflow_state(claim_id)
+            if workflow_state and workflow_state.workflow_data.get("similar_claims"):
+                similar_claims = workflow_state.workflow_data["similar_claims"]
+        
+        # Fallback: retrieve from Qdrant directly
+        if not similar_claims:
+            try:
+                from orchestrator import ClaimsOrchestrator
+                orchestrator = ClaimsOrchestrator()
+                if orchestrator.qdrant_client:
+                    claim_data = claim.submission.model_dump()
+                    similar_claims_list = await orchestrator._find_similar_claims(claim_data)
+                    similar_claims = [
+                        {
+                            "claim_id": sc.get("claim_id", "N/A"),
+                            "description": sc.get("description", "N/A"),
+                            "amount": sc.get("amount", 0),
+                            "status": sc.get("status", "unknown"),
+                            "similarity_score": sc.get("similarity_score", 0)
+                        }
+                        for sc in similar_claims_list
+                    ]
+            except Exception as e:
+                print(f"Error retrieving similar claims: {e}")
+                similar_claims = []
     
     # Build flags
     flags = []
@@ -173,11 +198,12 @@ def get_review_details_endpoint(claim_id: str, claims_db: Dict[str, Claim]):
     )
 
 
-def submit_review_decision_endpoint(claim_id: str, decision: ReviewDecisionRequest, claims_db: Dict[str, Claim], audit_logs: List[Dict]):
+async def submit_review_decision_endpoint(claim_id: str, decision: ReviewDecisionRequest, claims_db: Dict[str, Claim], audit_logs: List[Dict], workflow_executor=None):
     """
     Submit analyst decision for a claim under review
     
     Actions: approve, modify, escalate, request_info
+    After approve/modify, triggers Opus Deliver stage
     """
     if claim_id not in claims_db:
         raise HTTPException(status_code=404, detail=f"Claim {claim_id} not found")
@@ -193,11 +219,42 @@ def submit_review_decision_endpoint(claim_id: str, decision: ReviewDecisionReque
     # Generate audit log ID
     audit_log_id = f"AUDIT-{uuid.uuid4().hex[:8].upper()}"
     
+    # Get workflow state
+    workflow_state = workflow_executor.get_workflow_state(claim_id) if workflow_executor else None
+    
     # Process decision based on action
     if decision.action == ReviewAction.APPROVE:
         claim.status = ClaimStatus.APPROVED
         next_stage = "deliver"
         message = "Claim approved by analyst"
+        
+        # Transition workflow to Deliver stage
+        if workflow_state:
+            workflow_state.transition_to(WorkflowStage.DELIVER, StageStatus.IN_PROGRESS)
+            workflow_state.add_stage_event(
+                WorkflowStage.REVIEW,
+                StageStatus.COMPLETED,
+                "Review completed - Approved",
+                {"action": "approve", "reason": decision.reason}
+            )
+            # Execute Deliver stage
+            if claim.analysis and workflow_executor:
+                try:
+                    await workflow_executor._execute_deliver_stage(
+                        claim.submission,
+                        claim_id,
+                        workflow_state,
+                        claim.analysis,
+                        None
+                    )
+                except Exception as e:
+                    # Fallback: just mark as completed
+                    workflow_state.add_stage_event(
+                        WorkflowStage.DELIVER,
+                        StageStatus.COMPLETED,
+                        f"Delivery stage completed (with error: {str(e)})",
+                        {"final_status": claim.status.value}
+                    )
         
     elif decision.action == ReviewAction.MODIFY:
         if not decision.modified_payout:
@@ -214,6 +271,33 @@ def submit_review_decision_endpoint(claim_id: str, decision: ReviewDecisionReque
         claim.metadata['modified_payout'] = decision.modified_payout
         claim.metadata['original_payout'] = claim.analysis.final_decision.confidence if claim.analysis and claim.analysis.final_decision else None
         
+        # Transition workflow to Deliver stage
+        if workflow_state:
+            workflow_state.transition_to(WorkflowStage.DELIVER, StageStatus.IN_PROGRESS)
+            workflow_state.add_stage_event(
+                WorkflowStage.REVIEW,
+                StageStatus.COMPLETED,
+                "Review completed - Modified",
+                {"action": "modify", "modified_payout": decision.modified_payout, "reason": decision.reason}
+            )
+            # Execute Deliver stage
+            if claim.analysis and workflow_executor:
+                try:
+                    await workflow_executor._execute_deliver_stage(
+                        claim.submission,
+                        claim_id,
+                        workflow_state,
+                        claim.analysis,
+                        None
+                    )
+                except Exception as e:
+                    workflow_state.add_stage_event(
+                        WorkflowStage.DELIVER,
+                        StageStatus.COMPLETED,
+                        f"Delivery stage completed (with error: {str(e)})",
+                        {"final_status": claim.status.value}
+                    )
+        
     elif decision.action == ReviewAction.ESCALATE:
         if not decision.escalation_reason:
             raise HTTPException(
@@ -224,6 +308,15 @@ def submit_review_decision_endpoint(claim_id: str, decision: ReviewDecisionReque
         next_stage = "senior_review"
         message = f"Claim escalated to senior adjuster: {decision.escalation_reason}"
         
+        # Log escalation in workflow
+        if workflow_state:
+            workflow_state.add_stage_event(
+                WorkflowStage.REVIEW,
+                StageStatus.COMPLETED,
+                "Review completed - Escalated",
+                {"action": "escalate", "escalation_reason": decision.escalation_reason, "reason": decision.reason}
+            )
+        
     elif decision.action == ReviewAction.REQUEST_INFO:
         if not decision.requested_documents:
             raise HTTPException(
@@ -231,12 +324,22 @@ def submit_review_decision_endpoint(claim_id: str, decision: ReviewDecisionReque
                 detail="requested_documents is required when action is 'request_info'"
             )
         claim.status = ClaimStatus.NEEDS_INFO
-        next_stage = "intake"
+        next_stage = "intake"  # Loop back to intake for additional info
         message = f"Additional information requested: {', '.join(decision.requested_documents)}"
         # Store requested documents
         if not hasattr(claim, 'metadata'):
             claim.metadata = {}
         claim.metadata['requested_documents'] = decision.requested_documents
+        
+        # Transition workflow back to Intake stage
+        if workflow_state:
+            workflow_state.transition_to(WorkflowStage.INTAKE, StageStatus.PENDING)
+            workflow_state.add_stage_event(
+                WorkflowStage.REVIEW,
+                StageStatus.COMPLETED,
+                "Review completed - Info Requested",
+                {"action": "request_info", "requested_documents": decision.requested_documents, "reason": decision.reason}
+            )
     
     claim.updated_at = datetime.now()
     
@@ -253,7 +356,8 @@ def submit_review_decision_endpoint(claim_id: str, decision: ReviewDecisionReque
         "requested_documents": decision.requested_documents,
         "previous_status": ClaimStatus.REVIEW_REQUIRED.value,
         "new_status": claim.status.value,
-        "next_stage": next_stage
+        "next_stage": next_stage,
+        "workflow_stage": workflow_state.current_stage.value if workflow_state else None
     })
     
     return ReviewDecisionResponse(

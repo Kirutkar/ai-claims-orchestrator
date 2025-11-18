@@ -13,9 +13,10 @@ from models.schemas import (
     GuidedChatMessage, GuidedChatResponse,
     ReviewDecisionRequest, ReviewDecisionResponse,
     ReviewQueueResponse, ReviewQueueItem, ReviewDetailResponse,
-    ReviewAction
+    ReviewAction, WorkflowStateResponse, WorkflowStageInfo
 )
 from orchestrator import ClaimsOrchestrator
+from workflow.opus_executor import OpusWorkflowExecutor, WorkflowStage, StageStatus
 from utils.file_storage import file_storage
 from pydantic import BaseModel
 from agents.adjuster_brief_agent import generate_adjuster_brief
@@ -84,6 +85,9 @@ else:
 
 # Initialize orchestrator
 orchestrator = ClaimsOrchestrator()
+
+# Initialize Opus workflow executor
+workflow_executor = OpusWorkflowExecutor(orchestrator)
 
 # In-memory storage for demo (use database in production)
 claims_db: Dict[str, Claim] = {}
@@ -326,9 +330,10 @@ async def list_claims():
 @app.post("/api/claims/{claim_id}/analyze", response_model=AnalysisTriggerResponse)
 async def analyze_claim(claim_id: str):
     """
-    Trigger AI analysis for a submitted claim
+    Trigger AI analysis for a submitted claim using Opus workflow
     
-    This endpoint initiates the multi-agent workflow to process the claim
+    This endpoint initiates the Opus workflow orchestration:
+    Intake → Understand → Decide → Review (if needed) → Deliver
     """
     if claim_id not in claims_db:
         raise HTTPException(status_code=404, detail=f"Claim {claim_id} not found")
@@ -343,77 +348,84 @@ async def analyze_claim(claim_id: str):
         )
     
     try:
+        import time
+        start_time = time.time()
+        
         # Define status update callback to update claim status in real-time
         def update_claim_status(new_status: ClaimStatus):
             claim.status = new_status
             claim.updated_at = datetime.now()
             print(f"[{claim_id}] Status updated to: {new_status}")
         
-        # Update status to validating
-        claim.status = ClaimStatus.VALIDATING
-        claim.updated_at = datetime.now()
-        
-        # Run the orchestrator asynchronously with status update callback
-        analysis = await orchestrator.process_claim(
-            claim.submission, 
+        # Execute Opus workflow
+        analysis, workflow_state = await workflow_executor.execute_workflow(
+            claim.submission,
             claim_id,
             status_update_callback=update_claim_status
         )
         
+        # Update processing time
+        analysis.processing_time = time.time() - start_time
+        
         # Update claim with analysis results
         claim.analysis = analysis
         
-        # Auto-escalation logic: Check if review is required
-        requires_review = False
-        review_reason = None
+        # Get review requirement from workflow state
+        requires_review = workflow_state.workflow_data.get("review_required", False)
+        review_reason = workflow_state.workflow_data.get("review_reason")
         
-        # Check confidence threshold (< 70%)
-        if analysis.final_decision and analysis.final_decision.confidence < 0.7:
-            requires_review = True
-            review_reason = f"Low AI confidence ({analysis.final_decision.confidence:.2f} < 0.70)"
-        
-        # Check risk score (HIGH risk requires review)
-        if analysis.fraud_result and analysis.fraud_result.status == "warning":
-            fraud_risk = analysis.fraud_result.metadata.get("fraud_risk", 0)
-            if fraud_risk >= 0.8:
-                requires_review = True
-                review_reason = f"High fraud risk detected ({fraud_risk:.2f})"
-        
-        # Check for anomalies in validation
-        if analysis.validation_result and analysis.validation_result.status == "failed":
-            requires_review = True
-            review_reason = "Validation failed - requires manual review"
-        
-        # Set final status based on review requirement
-        if requires_review:
+        # Set final status based on workflow state
+        if workflow_state.current_stage == WorkflowStage.REVIEW:
             claim.status = ClaimStatus.REVIEW_REQUIRED
+        elif workflow_state.current_stage == WorkflowStage.DELIVER:
+            claim.status = analysis.overall_status
+        elif workflow_state.current_stage == WorkflowStage.COMPLETED:
+            claim.status = analysis.overall_status
         else:
-            # Auto-approve only if low risk and high confidence
             claim.status = analysis.overall_status
         
         claim.updated_at = datetime.now()
         
-        # Log audit entry
+        # Log audit entry with workflow information
         audit_logs.append({
             "claim_id": claim_id,
             "timestamp": datetime.now().isoformat(),
-            "action": "analysis_completed",
+            "action": "workflow_completed",
+            "workflow_stage": workflow_state.current_stage.value,
             "status": claim.status.value,
             "requires_review": requires_review,
             "review_reason": review_reason,
-            "ai_confidence": analysis.final_decision.confidence if analysis.final_decision else None
+            "ai_confidence": analysis.final_decision.confidence if analysis.final_decision else None,
+            "processing_time": analysis.processing_time,
+            "stage_history": [event["stage"] for event in workflow_state.stage_history]
         })
+        
+        message = f"Opus workflow completed. Stage: {workflow_state.current_stage.value}"
+        if requires_review:
+            message += f" - Review required: {review_reason}"
         
         return AnalysisTriggerResponse(
             claim_id=claim_id,
-            message=f"Claim analysis completed. Status: {claim.status.value}" + 
-                   (f" - Review required: {review_reason}" if requires_review else ""),
+            message=message,
             status="completed"
         )
     except Exception as e:
         claim.status = ClaimStatus.SUBMITTED
         claim.updated_at = datetime.now()
-        raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
+        
+        # Log workflow error
+        workflow_state = workflow_executor.get_workflow_state(claim_id)
+        if workflow_state:
+            audit_logs.append({
+                "claim_id": claim_id,
+                "timestamp": datetime.now().isoformat(),
+                "action": "workflow_failed",
+                "error": str(e),
+                "current_stage": workflow_state.current_stage.value,
+                "errors": workflow_state.errors
+            })
+        
+        raise HTTPException(status_code=500, detail=f"Workflow execution failed: {str(e)}")
 
 
 @app.get("/api/claims/{claim_id}/results")
@@ -587,7 +599,7 @@ async def get_review_details(claim_id: str):
     Returns all information an analyst needs to make a decision
     """
     from review_endpoints import get_review_details_endpoint
-    return get_review_details_endpoint(claim_id, claims_db)
+    return await get_review_details_endpoint(claim_id, claims_db, workflow_executor)
 
 
 @app.post("/api/claims/{claim_id}/review/decision", response_model=ReviewDecisionResponse)
@@ -596,9 +608,10 @@ async def submit_review_decision(claim_id: str, decision: ReviewDecisionRequest)
     Submit analyst decision for a claim under review
     
     Actions: approve, modify, escalate, request_info
+    After approve/modify, triggers Opus Deliver stage automatically
     """
     from review_endpoints import submit_review_decision_endpoint
-    return submit_review_decision_endpoint(claim_id, decision, claims_db, audit_logs)
+    return await submit_review_decision_endpoint(claim_id, decision, claims_db, audit_logs, workflow_executor)
 
 
 @app.get("/api/claims/{claim_id}/audit")
@@ -613,6 +626,78 @@ async def get_audit_log(claim_id: str):
         "claim_id": claim_id,
         "logs": claim_logs,
         "total": len(claim_logs)
+    }
+
+
+@app.get("/api/claims/{claim_id}/workflow", response_model=WorkflowStateResponse)
+async def get_workflow_state(claim_id: str):
+    """
+    Get Opus workflow state for a claim
+    
+    Returns current stage, stage history, and workflow data
+    """
+    workflow_state = workflow_executor.get_workflow_state(claim_id)
+    
+    if not workflow_state:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No workflow state found for claim {claim_id}"
+        )
+    
+    # Convert stage history to schema format
+    stage_history = [
+        WorkflowStageInfo(
+            stage=event["stage"],
+            status=event["status"],
+            message=event["message"],
+            timestamp=event["timestamp"],
+            data=event.get("data")
+        )
+        for event in workflow_state.stage_history
+    ]
+    
+    return WorkflowStateResponse(
+        claim_id=claim_id,
+        current_stage=workflow_state.current_stage.value,
+        stage_status=workflow_state.stage_status.value,
+        stage_history=stage_history,
+        workflow_data=workflow_state.workflow_data,
+        errors=workflow_state.errors,
+        start_time=workflow_state.start_time.isoformat(),
+        last_updated=workflow_state.last_updated.isoformat()
+    )
+
+
+@app.get("/api/claims/{claim_id}/deliver-outputs")
+async def get_deliver_outputs(claim_id: str):
+    """
+    Get Deliver stage outputs for a claim
+    
+    Returns adjuster brief, claimant message, and SIU alert if available
+    """
+    workflow_state = workflow_executor.get_workflow_state(claim_id)
+    
+    if not workflow_state:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No workflow state found for claim {claim_id}"
+        )
+    
+    deliver_data = workflow_state.workflow_data.get("deliver")
+    
+    if not deliver_data:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Deliver stage not completed for claim {claim_id}"
+        )
+    
+    return {
+        "claim_id": claim_id,
+        "adjuster_brief": deliver_data.get("adjuster_brief"),
+        "claimant_message": deliver_data.get("claimant_message"),
+        "siu_alert": deliver_data.get("siu_alert"),
+        "final_status": deliver_data.get("final_status"),
+        "delivered_at": workflow_state.last_updated.isoformat()
     }
 
 

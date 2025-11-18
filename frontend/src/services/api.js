@@ -118,6 +118,12 @@ export const claimsAPI = {
     const response = await api.get(`/api/claims/${claimId}/audit`);
     return response.data;
   },
+
+  // Workflow endpoints
+  getWorkflowState: async (claimId) => {
+    const response = await api.get(`/api/claims/${claimId}/workflow`);
+    return response.data;
+  },
 };
 
 export default api;
