@@ -38,63 +38,17 @@ def finalize_claim_output(claim_structured):
     claim_structured["adjuster_brief"] = adjuster_brief
     return claim_structured
 
-# Configure CORS - Handle origins properly
-def get_cors_origins():
-    """Parse CORS origins from config, handling whitespace and empty strings"""
-    origins_str = settings.cors_origins or ""
-    origins = [origin.strip() for origin in origins_str.split(',') if origin.strip()]
-    
-    # Add common development origins if not already present
-    default_origins = [
-        "http://localhost:3000",
-        "http://localhost:5173",
-        "http://127.0.0.1:3000",
-        "http://127.0.0.1:5173",
-        "http://localhost:3001",  # Additional common port
-    ]
-    
-    # Combine and remove duplicates
-    all_origins = list(set(origins + default_origins))
-    
-    return all_origins
-
-# Configure CORS middleware
-# Allow all origins if CORS_ORIGINS is "*", otherwise use specific origins
-cors_origins_value = settings.cors_origins.strip() if settings.cors_origins else ""
-
-if cors_origins_value == "*":
-    # Allow all origins
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["*"],
-        allow_credentials=False,  # Cannot use credentials with allow_origins=["*"]
-        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
-        allow_headers=["*"],
-        expose_headers=["*"],
-        max_age=3600,
-    )
-elif settings.debug_mode:
-    # Debug mode: Allow all localhost and 127.0.0.1 origins
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origin_regex=r"https?://(localhost|127\.0\.0\.1)(:\d+)?",
-        allow_credentials=True,
-        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
-        allow_headers=["*"],
-        expose_headers=["*"],
-        max_age=3600,
-    )
-else:
-    # Production mode: Use specific origins only
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=get_cors_origins(),
-        allow_credentials=True,
-        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
-        allow_headers=["*"],
-        expose_headers=["*"],
-        max_age=3600,
-    )
+# Configure CORS - Allow ALL origins without restrictions
+# This allows any website/app to access the API (no restrictions)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origin_regex=r".*",  # Match all origins (http, https, any domain, any port)
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH", "HEAD"],  # All HTTP methods
+    allow_headers=["*"],  # Allow all headers
+    expose_headers=["*"],  # Expose all headers
+    max_age=3600,
+)
 
 # Initialize orchestrator
 orchestrator = ClaimsOrchestrator()
