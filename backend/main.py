@@ -59,8 +59,21 @@ def get_cors_origins():
     return all_origins
 
 # Configure CORS middleware
-# In debug mode, use allow_origin_regex for more flexibility
-if settings.debug_mode:
+# Allow all origins if CORS_ORIGINS is "*", otherwise use specific origins
+cors_origins_value = settings.cors_origins.strip() if settings.cors_origins else ""
+
+if cors_origins_value == "*":
+    # Allow all origins
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=False,  # Cannot use credentials with allow_origins=["*"]
+        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+        allow_headers=["*"],
+        expose_headers=["*"],
+        max_age=3600,
+    )
+elif settings.debug_mode:
     # Debug mode: Allow all localhost and 127.0.0.1 origins
     app.add_middleware(
         CORSMiddleware,

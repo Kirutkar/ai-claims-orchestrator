@@ -1,11 +1,13 @@
-import axios from 'axios';
+import axios from "axios";
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const API_BASE_URL =
+  import.meta.env.VITE_API_URL ||
+  "https://ai-claims-orchestrator.onrender.com/";
 
 const api = axios.create({
   baseURL: API_BASE_URL,
   headers: {
-    'Content-Type': 'application/json',
+    "Content-Type": "application/json",
   },
 });
 
@@ -16,7 +18,7 @@ export const claimsAPI = {
     if (tempClaimId) {
       payload.temp_claim_id = tempClaimId;
     }
-    const response = await api.post('/api/claims/submit', payload);
+    const response = await api.post("/api/claims/submit", payload);
     return response.data;
   },
 
@@ -28,7 +30,7 @@ export const claimsAPI = {
 
   // List all claims
   listClaims: async () => {
-    const response = await api.get('/api/claims');
+    const response = await api.get("/api/claims");
     return response.data;
   },
 
@@ -46,35 +48,39 @@ export const claimsAPI = {
 
   // Health check
   healthCheck: async () => {
-    const response = await api.get('/health');
+    const response = await api.get("/health");
     return response.data;
   },
 
   // Chat endpoints
   sendChatMessage: async (message, conversationId = null, context = {}) => {
-    const response = await api.post('/api/chat/message', {
+    const response = await api.post("/api/chat/message", {
       message,
       conversation_id: conversationId,
-      context
+      context,
     });
     return response.data;
   },
 
   sendClaimGuidanceMessage: async (message, conversationId = null) => {
-    const response = await api.post('/api/chat/claim-guidance', {
+    const response = await api.post("/api/chat/claim-guidance", {
       message,
       conversation_id: conversationId,
-      context: { mode: 'claim_guidance' }
+      context: { mode: "claim_guidance" },
     });
     return response.data;
   },
 
   // Guided submission endpoint
-  sendGuidedMessage: async (message, conversationId = null, collectedData = {}) => {
-    const response = await api.post('/api/chat/guided-submission', {
+  sendGuidedMessage: async (
+    message,
+    conversationId = null,
+    collectedData = {}
+  ) => {
+    const response = await api.post("/api/chat/guided-submission", {
       message,
       conversation_id: conversationId,
-      collected_data: collectedData
+      collected_data: collectedData,
     });
     return response.data;
   },
@@ -82,12 +88,16 @@ export const claimsAPI = {
   // File upload endpoints
   uploadClaimDocument: async (claimId, file) => {
     const formData = new FormData();
-    formData.append('file', file);
-    const response = await api.post(`/api/claims/${claimId}/documents`, formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    });
+    formData.append("file", file);
+    const response = await api.post(
+      `/api/claims/${claimId}/documents`,
+      formData,
+      {
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
+      }
+    );
     return response.data;
   },
 
@@ -97,10 +107,10 @@ export const claimsAPI = {
   },
 
   // Review endpoints
-  getReviewQueue: async (status = 'pending', priority = null) => {
+  getReviewQueue: async (status = "pending", priority = null) => {
     const params = { status };
     if (priority) params.priority = priority;
-    const response = await api.get('/api/review/queue', { params });
+    const response = await api.get("/api/review/queue", { params });
     return response.data;
   },
 
@@ -110,7 +120,10 @@ export const claimsAPI = {
   },
 
   submitReviewDecision: async (claimId, decision) => {
-    const response = await api.post(`/api/claims/${claimId}/review/decision`, decision);
+    const response = await api.post(
+      `/api/claims/${claimId}/review/decision`,
+      decision
+    );
     return response.data;
   },
 
