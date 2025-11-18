@@ -1,5 +1,5 @@
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -9,20 +9,22 @@ export default defineConfig({
     host: true,
     strictPort: true,
     proxy: {
-      '/api': {
-        target: process.env.VITE_API_URL || 'http://localhost:8000',
+      "/api": {
+        target:
+          process.env.VITE_API_URL ||
+          "https://ai-claims-orchestrator.onrender.com/",
         changeOrigin: true,
-      }
-    }
+      },
+    },
   },
   preview: {
     port: 3000,
     host: true,
-    strictPort: true
+    strictPort: true,
   },
   build: {
-    outDir: 'dist',
+    outDir: "dist",
     sourcemap: false,
-    minify: 'esbuild'
-  }
-})
+    minify: "esbuild",
+  },
+});

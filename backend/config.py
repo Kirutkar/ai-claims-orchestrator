@@ -23,8 +23,8 @@ class Settings(BaseSettings):
     debug_mode: bool = os.getenv("DEBUG_MODE", "true").lower() == "true"
     
     # CORS Configuration - Docker-aware
-    # Default origins for local development and Docker
-    cors_origins: str = "http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000,http://127.0.0.1:5173,http://frontend:3000"
+    # Set to "*" to allow all origins, or specify comma-separated list
+    cors_origins: str = os.getenv("CORS_ORIGINS", "*")
     
     # Logging
     log_level: str = "INFO"
