@@ -18,9 +18,9 @@ class Settings(BaseSettings):
     embedding_dimension: int = 768
 
     # Backend Configuration
-    backend_host: str = "0.0.0.0"
-    backend_port: int = 8000
-    debug_mode: bool = True
+    backend_host: str = os.getenv("BACKEND_HOST", "0.0.0.0")
+    backend_port: int = int(os.getenv("PORT", os.getenv("BACKEND_PORT", "8000")))
+    debug_mode: bool = os.getenv("DEBUG_MODE", "true").lower() == "true"
     
     # CORS Configuration - Docker-aware
     # Default origins for local development and Docker

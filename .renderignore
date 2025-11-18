@@ -1,3 +1,5 @@
+# Render ignore file - files to exclude from deployment
+
 # Python
 __pycache__/
 *.py[cod]
@@ -11,6 +13,11 @@ ENV/
 *.egg-info/
 dist/
 build/
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
 
 # IDE
 .vscode/
@@ -32,12 +39,12 @@ Thumbs.db
 .git/
 .gitignore
 
-# Logs
-*.log
-logs/
-backend.log
+# Documentation
+docs/
+*.md
+!README.md
 
-# Claims data (keep structure but not actual files)
+# Claims data
 claims/*/documents/*
 
 # Test files
@@ -45,6 +52,10 @@ test_*.py
 *_test.py
 tests/
 
-# Documentation
-*.md
-!README.md
+# Logs
+*.log
+logs/
+
+# Frontend (not needed for backend deployment)
+frontend/
+
